@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: bwrelay
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: bwrelay
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:
