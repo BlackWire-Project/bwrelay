@@ -11,24 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const consumePrekey = `-- name: ConsumePrekey :one
-DELETE FROM one_time_prekeys p
-WHERE p.id = (
-    SELECT p2.id FROM one_time_prekeys p2
-    WHERE p2.username = $1
-    ORDER BY p2.created_at ASC
-    LIMIT 1
-)
-RETURNING p.prekey
-`
-
-func (q *Queries) ConsumePrekey(ctx context.Context, username string) (string, error) {
-	row := q.db.QueryRow(ctx, consumePrekey, username)
-	var prekey string
-	err := row.Scan(&prekey)
-	return prekey, err
-}
-
 const createMessage = `-- name: CreateMessage :one
 
 INSERT INTO messages (recipient, payload, dh_public, message_number, previous_chain_length)
@@ -63,10 +45,11 @@ func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (C
 	return i, err
 }
 
-const createPrekey = `-- name: CreatePrekey :exec
+const createPrekey = `-- name: CreatePrekey :one
 
 INSERT INTO one_time_prekeys (username, prekey)
 VALUES ($1, $2)
+RETURNING id
 `
 
 type CreatePrekeyParams struct {
@@ -75,9 +58,11 @@ type CreatePrekeyParams struct {
 }
 
 // ============ ONE-TIME PREKEYS ============
-func (q *Queries) CreatePrekey(ctx context.Context, arg CreatePrekeyParams) error {
-	_, err := q.db.Exec(ctx, createPrekey, arg.Username, arg.Prekey)
-	return err
+func (q *Queries) CreatePrekey(ctx context.Context, arg CreatePrekeyParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, createPrekey, arg.Username, arg.Prekey)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const createUser = `-- name: CreateUser :one
@@ -124,6 +109,18 @@ func (q *Queries) DeleteExpiredMessages(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deletePrekeyByID = `-- name: DeletePrekeyByID :one
+DELETE FROM one_time_prekeys
+WHERE id = $1
+RETURNING id
+`
+
+func (q *Queries) DeletePrekeyByID(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, deletePrekeyByID, id)
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getMessageByID = `-- name: GetMessageByID :one
@@ -222,6 +219,26 @@ func (q *Queries) GetMessagesByRecipientAfter(ctx context.Context, arg GetMessag
 		return nil, err
 	}
 	return items, nil
+}
+
+const getPrekey = `-- name: GetPrekey :one
+SELECT id, username, prekey, created_at
+FROM one_time_prekeys
+WHERE username = $1
+ORDER BY created_at ASC
+LIMIT 1
+`
+
+func (q *Queries) GetPrekey(ctx context.Context, username string) (OneTimePrekey, error) {
+	row := q.db.QueryRow(ctx, getPrekey, username)
+	var i OneTimePrekey
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Prekey,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const getPrekeysCount = `-- name: GetPrekeysCount :one

@@ -33,12 +33,12 @@ func main() {
 	}
 	log.Println("Connected to database")
 
-	// Initialize handlers
-	userHandler := handler.NewUserHandler(pool)
-	messageHandler := handler.NewMessageHandler(pool)
-
 	// Initialize WebSocket hub
 	hub := ws.NewHub()
+
+	// Initialize handlers
+	userHandler := handler.NewUserHandler(pool)
+	messageHandler := handler.NewMessageHandler(pool, hub)
 	wsHandler := ws.NewWSHandler(hub)
 
 	// Setup router

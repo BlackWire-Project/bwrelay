@@ -15,19 +15,22 @@ SELECT EXISTS(SELECT 1 FROM users WHERE username = $1) AS exists;
 
 -- ============ ONE-TIME PREKEYS ============
 
--- name: CreatePrekey :exec
+-- name: CreatePrekey :one
 INSERT INTO one_time_prekeys (username, prekey)
-VALUES ($1, $2);
+VALUES ($1, $2)
+RETURNING id;
 
--- name: ConsumePrekey :one
-DELETE FROM one_time_prekeys p
-WHERE p.id = (
-    SELECT p2.id FROM one_time_prekeys p2
-    WHERE p2.username = $1
-    ORDER BY p2.created_at ASC
-    LIMIT 1
-)
-RETURNING p.prekey;
+-- name: GetPrekey :one
+SELECT id, username, prekey, created_at
+FROM one_time_prekeys
+WHERE username = $1
+ORDER BY created_at ASC
+LIMIT 1;
+
+-- name: DeletePrekeyByID :one
+DELETE FROM one_time_prekeys
+WHERE id = $1
+RETURNING id;
 
 -- name: GetPrekeysCount :one
 SELECT COUNT(*) AS count
