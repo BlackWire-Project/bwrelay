@@ -1,1 +1,4 @@
-
+CREATE TABLE Users (
+    public_key VARCHAR(255) PRIMARY KEY NOT NULL,
+    name VARCHAR(255) NOT NULL
+);
