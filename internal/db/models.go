@@ -4,7 +4,32 @@
 
 package db
 
+import (
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+type Message struct {
+	ID                  pgtype.UUID      `json:"id"`
+	Recipient           string           `json:"recipient"`
+	Payload             string           `json:"payload"`
+	DhPublic            string           `json:"dh_public"`
+	MessageNumber       int32            `json:"message_number"`
+	PreviousChainLength int32            `json:"previous_chain_length"`
+	CreatedAt           pgtype.Timestamp `json:"created_at"`
+}
+
+type OneTimePrekey struct {
+	ID        pgtype.UUID      `json:"id"`
+	Username  string           `json:"username"`
+	Prekey    string           `json:"prekey"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
 type User struct {
-	PublicKey string
-	Name      string
+	ID                    pgtype.UUID      `json:"id"`
+	Username              string           `json:"username"`
+	IdentityKey           string           `json:"identity_key"`
+	SignedPrekey          string           `json:"signed_prekey"`
+	SignedPrekeySignature string           `json:"signed_prekey_signature"`
+	CreatedAt             pgtype.Timestamp `json:"created_at"`
 }

@@ -7,16 +7,263 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const getUser = `-- name: GetUser :one
-SELECT public_key, name FROM Users
-WHERE public_key = $1 LIMIT 1
+const consumePrekey = `-- name: ConsumePrekey :one
+DELETE FROM one_time_prekeys p
+WHERE p.id = (
+    SELECT p2.id FROM one_time_prekeys p2
+    WHERE p2.username = $1
+    ORDER BY p2.created_at ASC
+    LIMIT 1
+)
+RETURNING p.prekey
 `
 
-func (q *Queries) GetUser(ctx context.Context, publicKey string) (User, error) {
-	row := q.db.QueryRow(ctx, getUser, publicKey)
-	var i User
-	err := row.Scan(&i.PublicKey, &i.Name)
+func (q *Queries) ConsumePrekey(ctx context.Context, username string) (string, error) {
+	row := q.db.QueryRow(ctx, consumePrekey, username)
+	var prekey string
+	err := row.Scan(&prekey)
+	return prekey, err
+}
+
+const createMessage = `-- name: CreateMessage :one
+
+INSERT INTO messages (recipient, payload, dh_public, message_number, previous_chain_length)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, created_at
+`
+
+type CreateMessageParams struct {
+	Recipient           string `json:"recipient"`
+	Payload             string `json:"payload"`
+	DhPublic            string `json:"dh_public"`
+	MessageNumber       int32  `json:"message_number"`
+	PreviousChainLength int32  `json:"previous_chain_length"`
+}
+
+type CreateMessageRow struct {
+	ID        pgtype.UUID      `json:"id"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
+// ============ MESSAGES ============
+func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) (CreateMessageRow, error) {
+	row := q.db.QueryRow(ctx, createMessage,
+		arg.Recipient,
+		arg.Payload,
+		arg.DhPublic,
+		arg.MessageNumber,
+		arg.PreviousChainLength,
+	)
+	var i CreateMessageRow
+	err := row.Scan(&i.ID, &i.CreatedAt)
 	return i, err
+}
+
+const createPrekey = `-- name: CreatePrekey :exec
+
+INSERT INTO one_time_prekeys (username, prekey)
+VALUES ($1, $2)
+`
+
+type CreatePrekeyParams struct {
+	Username string `json:"username"`
+	Prekey   string `json:"prekey"`
+}
+
+// ============ ONE-TIME PREKEYS ============
+func (q *Queries) CreatePrekey(ctx context.Context, arg CreatePrekeyParams) error {
+	_, err := q.db.Exec(ctx, createPrekey, arg.Username, arg.Prekey)
+	return err
+}
+
+const createUser = `-- name: CreateUser :one
+
+INSERT INTO users (username, identity_key, signed_prekey, signed_prekey_signature)
+VALUES ($1, $2, $3, $4)
+RETURNING id, username, created_at
+`
+
+type CreateUserParams struct {
+	Username              string `json:"username"`
+	IdentityKey           string `json:"identity_key"`
+	SignedPrekey          string `json:"signed_prekey"`
+	SignedPrekeySignature string `json:"signed_prekey_signature"`
+}
+
+type CreateUserRow struct {
+	ID        pgtype.UUID      `json:"id"`
+	Username  string           `json:"username"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
+// ============ USERS ============
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Username,
+		arg.IdentityKey,
+		arg.SignedPrekey,
+		arg.SignedPrekeySignature,
+	)
+	var i CreateUserRow
+	err := row.Scan(&i.ID, &i.Username, &i.CreatedAt)
+	return i, err
+}
+
+const deleteExpiredMessages = `-- name: DeleteExpiredMessages :execrows
+DELETE FROM messages
+WHERE created_at < NOW() - INTERVAL '30 days'
+`
+
+func (q *Queries) DeleteExpiredMessages(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredMessages)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getMessageByID = `-- name: GetMessageByID :one
+SELECT id, recipient, payload, dh_public, message_number, previous_chain_length, created_at
+FROM messages
+WHERE id = $1
+`
+
+func (q *Queries) GetMessageByID(ctx context.Context, id pgtype.UUID) (Message, error) {
+	row := q.db.QueryRow(ctx, getMessageByID, id)
+	var i Message
+	err := row.Scan(
+		&i.ID,
+		&i.Recipient,
+		&i.Payload,
+		&i.DhPublic,
+		&i.MessageNumber,
+		&i.PreviousChainLength,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getMessagesByRecipient = `-- name: GetMessagesByRecipient :many
+SELECT id, recipient, payload, dh_public, message_number, previous_chain_length, created_at
+FROM messages
+WHERE recipient = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) GetMessagesByRecipient(ctx context.Context, recipient string) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getMessagesByRecipient, recipient)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.Recipient,
+			&i.Payload,
+			&i.DhPublic,
+			&i.MessageNumber,
+			&i.PreviousChainLength,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getMessagesByRecipientAfter = `-- name: GetMessagesByRecipientAfter :many
+SELECT id, recipient, payload, dh_public, message_number, previous_chain_length, created_at
+FROM messages
+WHERE recipient = $1 AND created_at > $2
+ORDER BY created_at ASC
+LIMIT $3
+`
+
+type GetMessagesByRecipientAfterParams struct {
+	Recipient string           `json:"recipient"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+	Limit     int32            `json:"limit"`
+}
+
+func (q *Queries) GetMessagesByRecipientAfter(ctx context.Context, arg GetMessagesByRecipientAfterParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getMessagesByRecipientAfter, arg.Recipient, arg.CreatedAt, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.Recipient,
+			&i.Payload,
+			&i.DhPublic,
+			&i.MessageNumber,
+			&i.PreviousChainLength,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPrekeysCount = `-- name: GetPrekeysCount :one
+SELECT COUNT(*) AS count
+FROM one_time_prekeys
+WHERE username = $1
+`
+
+func (q *Queries) GetPrekeysCount(ctx context.Context, username string) (int64, error) {
+	row := q.db.QueryRow(ctx, getPrekeysCount, username)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT id, username, identity_key, signed_prekey, signed_prekey_signature, created_at
+FROM users
+WHERE username = $1
+`
+
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsername, username)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.IdentityKey,
+		&i.SignedPrekey,
+		&i.SignedPrekeySignature,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const userExists = `-- name: UserExists :one
+SELECT EXISTS(SELECT 1 FROM users WHERE username = $1) AS exists
+`
+
+func (q *Queries) UserExists(ctx context.Context, username string) (bool, error) {
+	row := q.db.QueryRow(ctx, userExists, username)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
