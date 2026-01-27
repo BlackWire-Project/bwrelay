@@ -2,17 +2,16 @@
 CREATE TABLE IF NOT EXISTS users(
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(255) UNIQUE NOT NULL,
-    identity_key TEXT NOT NULL,
-    signed_prekey TEXT NOT NULL,
+    identity_key TEXT UNIQUE NOT NULL,
+    signed_prekey TEXT UNIQUE NOT NULL,
     signed_prekey_signature TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- One-time prekeys table
 CREATE TABLE IF NOT EXISTS one_time_prekeys(
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    username VARCHAR(255) NOT NULL REFERENCES users(username)
-ON DELETE CASCADE,
-    prekey TEXT NOT NULL,
+    username VARCHAR(255) NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+    prekey TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- Messages table

@@ -3,10 +3,12 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/BlackWire-Project/bwrelay/internal/db"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -83,16 +85,35 @@ func (h *UserHandler) Create(c *gin.Context) {
 		SignedPrekeySignature: req.SignedPrekeySignature,
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			// Unique constraint violation
+			field := "key"
+			if strings.Contains(pgErr.ConstraintName, "identity_key") {
+				field = "identity_key"
+			} else if strings.Contains(pgErr.ConstraintName, "signed_prekey") {
+				field = "signed_prekey"
+			}
+			c.JSON(http.StatusConflict, gin.H{"error": field + " already exists"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}
 
-	// Add one-time prekeys if provided
+	// Add one-time prekeys if provided (skip duplicates)
 	for _, prekey := range req.OneTimePrekeys {
-		h.queries.CreatePrekey(c.Request.Context(), db.CreatePrekeyParams{
+		_, err := h.queries.CreatePrekey(c.Request.Context(), db.CreatePrekeyParams{
 			Username: req.Username,
 			Prekey:   prekey,
 		})
+		if err != nil {
+			// Skip duplicates, log other errors but don't fail
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				continue
+			}
+		}
 	}
 
 	c.JSON(http.StatusCreated, CreateUserResponse{
@@ -177,13 +198,24 @@ func (h *UserHandler) AddPrekeys(c *gin.Context) {
 	}
 
 	// Add prekeys
+	added := 0
 	for _, prekey := range req.OneTimePrekeys {
-		h.queries.CreatePrekey(c.Request.Context(), db.CreatePrekeyParams{
+		_, err := h.queries.CreatePrekey(c.Request.Context(), db.CreatePrekeyParams{
 			Username: username,
 			Prekey:   prekey,
 		})
+		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				// Prekey already exists, skip it
+				continue
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add prekeys"})
+			return
+		}
+		added++
 	}
 
-	c.JSON(http.StatusOK, AddPrekeysResponse{Count: len(req.OneTimePrekeys)})
+	c.JSON(http.StatusOK, AddPrekeysResponse{Count: added})
 }
 

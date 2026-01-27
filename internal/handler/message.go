@@ -29,9 +29,9 @@ type CreateMessageRequest struct {
 	Recipient           string  `json:"recipient" binding:"required"`
 	Payload             string  `json:"payload" binding:"required"`
 	DHPublic            string  `json:"dh_public" binding:"required"`
-	MessageNumber       int32   `json:"message_number" binding:"required"`
+	MessageNumber       *int32  `json:"message_number" binding:"required"`
 	PreviousChainLength int32   `json:"previous_chain_length"`
-	PrekeyID            *string `json:"prekey_id"` // Optional: if provided, consumes this prekey
+	PrekeyID            *string `json:"prekey_id"`
 }
 
 type CreateMessageResponse struct {
@@ -54,6 +54,18 @@ func (h *MessageHandler) Create(c *gin.Context) {
 	var req CreateMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate message_number is provided
+	if req.MessageNumber == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message_number is required"})
+		return
+	}
+
+	// First message (message_number == 0) requires prekey_id
+	if *req.MessageNumber == 0 && req.PrekeyID == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "prekey_id is required for first message (message_number == 0)"})
 		return
 	}
 
@@ -91,7 +103,7 @@ func (h *MessageHandler) Create(c *gin.Context) {
 		Recipient:           req.Recipient,
 		Payload:             req.Payload,
 		DhPublic:            req.DHPublic,
-		MessageNumber:       req.MessageNumber,
+		MessageNumber:       *req.MessageNumber,
 		PreviousChainLength: req.PreviousChainLength,
 	})
 	if err != nil {
