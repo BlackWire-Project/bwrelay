@@ -1,0 +1,152 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-03-22T18:00:00.000Z",
+  "__export_source": "Codex",
+  "resources": [
+    {
+      "_id": "wrk_bwrelay_zero_trust",
+      "_type": "workspace",
+      "name": "bwrelay Two Users",
+      "description": "Local test flow for bwrelay opaque inbox messaging",
+      "scope": "collection"
+    },
+    {
+      "_id": "env_bwrelay_zero_trust",
+      "_type": "environment",
+      "parentId": "wrk_bwrelay_zero_trust",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "http://127.0.0.1:8080",
+        "alice_username": "alice",
+        "bob_username": "bob",
+        "alice_inbox_id": "alice-inbox-local-9f3c5f8fd3f14535af9bc5172a460001",
+        "bob_inbox_id": "bob-inbox-local-8d0f4f66f9694cbd96932fbe16e21002",
+        "alice_bundle_prekey_id": "",
+        "bob_bundle_prekey_id": ""
+      }
+    },
+    {
+      "_id": "fld_register",
+      "_type": "request_group",
+      "parentId": "wrk_bwrelay_zero_trust",
+      "name": "1. Register Users"
+    },
+    {
+      "_id": "req_register_alice",
+      "_type": "request",
+      "parentId": "fld_register",
+      "name": "Register Alice",
+      "method": "POST",
+      "url": "{{ _.base_url }}/users",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"username\": \"{{ _.alice_username }}\",\n  \"identity_key\": \"alice-identity-key-public-local\",\n  \"signed_prekey\": \"alice-signed-prekey-public-local\",\n  \"signed_prekey_signature\": \"alice-signed-prekey-signature-local\",\n  \"inbox_id\": \"{{ _.alice_inbox_id }}\",\n  \"one_time_prekeys\": [\n    \"alice-one-time-prekey-1-local\",\n    \"alice-one-time-prekey-2-local\"\n  ]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_register_bob",
+      "_type": "request",
+      "parentId": "fld_register",
+      "name": "Register Bob",
+      "method": "POST",
+      "url": "{{ _.base_url }}/users",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"username\": \"{{ _.bob_username }}\",\n  \"identity_key\": \"bob-identity-key-public-local\",\n  \"signed_prekey\": \"bob-signed-prekey-public-local\",\n  \"signed_prekey_signature\": \"bob-signed-prekey-signature-local\",\n  \"inbox_id\": \"{{ _.bob_inbox_id }}\",\n  \"one_time_prekeys\": [\n    \"bob-one-time-prekey-1-local\",\n    \"bob-one-time-prekey-2-local\"\n  ]\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "fld_bob_bootstrap",
+      "_type": "request_group",
+      "parentId": "wrk_bwrelay_zero_trust",
+      "name": "2. Alice -> Bob Bootstrap"
+    },
+    {
+      "_id": "req_get_bob_bundle",
+      "_type": "request",
+      "parentId": "fld_bob_bootstrap",
+      "name": "Get Bundle - Bob",
+      "method": "GET",
+      "url": "{{ _.base_url }}/users/{{ _.bob_username }}/bundle"
+    },
+    {
+      "_id": "req_send_prekey_to_bob",
+      "_type": "request",
+      "parentId": "fld_bob_bootstrap",
+      "name": "Alice Sends Prekey Message To Bob",
+      "method": "POST",
+      "url": "{{ _.base_url }}/messages",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"inbox_id\": \"{{ _.bob_inbox_id }}\",\n  \"kind\": \"prekey_message\",\n  \"header\": \"{\\\"sender\\\":\\\"{{ _.alice_username }}\\\",\\\"session_stage\\\":\\\"x3dh_bootstrap\\\",\\\"dh\\\":\\\"alice-ephemeral-dh-public-local\\\"}\",\n  \"ciphertext\": \"ciphertext-from-alice-to-bob-bootstrap-local\",\n  \"used_prekey_id\": \"{{ _.bob_bundle_prekey_id }}\",\n  \"client_message_id\": \"alice-to-bob-bootstrap-001\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_bob_poll",
+      "_type": "request",
+      "parentId": "fld_bob_bootstrap",
+      "name": "Bob Poll Inbox",
+      "method": "GET",
+      "url": "{{ _.base_url }}/messages?inbox_id={{ _.bob_inbox_id }}&limit=100"
+    },
+    {
+      "_id": "fld_alice_reply",
+      "_type": "request_group",
+      "parentId": "wrk_bwrelay_zero_trust",
+      "name": "3. Bob -> Alice Reply"
+    },
+    {
+      "_id": "req_get_alice_bundle",
+      "_type": "request",
+      "parentId": "fld_alice_reply",
+      "name": "Get Bundle - Alice",
+      "method": "GET",
+      "url": "{{ _.base_url }}/users/{{ _.alice_username }}/bundle"
+    },
+    {
+      "_id": "req_send_ratchet_to_alice",
+      "_type": "request",
+      "parentId": "fld_alice_reply",
+      "name": "Bob Sends Ratchet Message To Alice",
+      "method": "POST",
+      "url": "{{ _.base_url }}/messages",
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\n  \"inbox_id\": \"{{ _.alice_inbox_id }}\",\n  \"kind\": \"ratchet_message\",\n  \"header\": \"{\\\"sender\\\":\\\"{{ _.bob_username }}\\\",\\\"session_stage\\\":\\\"double_ratchet\\\",\\\"n\\\":1}\",\n  \"ciphertext\": \"ciphertext-from-bob-to-alice-ratchet-local\",\n  \"client_message_id\": \"bob-to-alice-ratchet-001\"\n}"
+      },
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ]
+    },
+    {
+      "_id": "req_alice_poll",
+      "_type": "request",
+      "parentId": "fld_alice_reply",
+      "name": "Alice Poll Inbox",
+      "method": "GET",
+      "url": "{{ _.base_url }}/messages?inbox_id={{ _.alice_inbox_id }}&limit=100"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -39,4 +40,14 @@ func parseUUID(s string) (pgtype.UUID, error) {
 	uuid.Bytes = bytes
 	uuid.Valid = true
 	return uuid, nil
+}
+
+func validateLength(field string, value string, max int) error {
+	if value == "" {
+		return errors.New(field + " is required")
+	}
+	if len(value) > max {
+		return fmt.Errorf("%s exceeds max length of %d", field, max)
+	}
+	return nil
 }

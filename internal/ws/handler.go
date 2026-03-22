@@ -7,9 +7,11 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const maxInboxIDLength = 255
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins (adjust for production)
+		return true
 	},
 }
 
@@ -21,45 +23,26 @@ func NewWSHandler(hub *Hub) *WSHandler {
 	return &WSHandler{hub: hub}
 }
 
-type WSMessage struct {
-	Type     string `json:"type"`
-	Username string `json:"username,omitempty"`
-}
-
-// GET /ws
+// GET /ws?inbox_id=...
 func (h *WSHandler) Handle(c *gin.Context) {
+	inboxID := c.Query("inbox_id")
+	if inboxID == "" || len(inboxID) > maxInboxIDLength {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid inbox_id query parameter required"})
+		return
+	}
+
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	var subscribedAs string
+	h.hub.Subscribe(inboxID, conn)
+	defer h.hub.Unsubscribe(inboxID, conn)
 
 	for {
-		var msg WSMessage
-		if err := conn.ReadJSON(&msg); err != nil {
-			break
+		if _, _, err := conn.ReadMessage(); err != nil {
+			return
 		}
-
-		switch msg.Type {
-		case "subscribe":
-			if subscribedAs != "" {
-				h.hub.Unsubscribe(subscribedAs, conn)
-			}
-			subscribedAs = msg.Username
-			h.hub.Subscribe(msg.Username, conn)
-
-		case "unsubscribe":
-			if subscribedAs != "" {
-				h.hub.Unsubscribe(subscribedAs, conn)
-				subscribedAs = ""
-			}
-		}
-	}
-
-	// Cleanup on disconnect
-	if subscribedAs != "" {
-		h.hub.Unsubscribe(subscribedAs, conn)
 	}
 }

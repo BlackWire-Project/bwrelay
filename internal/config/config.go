@@ -11,7 +11,7 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://dev:root@localhost:5432/bwrelay?sslmode=disable"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://dev:root@localhost:5433/bwrelay?sslmode=disable"),
 		Port:        getEnv("PORT", "8080"),
 	}
 }

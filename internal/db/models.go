@@ -9,18 +9,20 @@ import (
 )
 
 type Message struct {
-	ID                  pgtype.UUID      `json:"id"`
-	Recipient           string           `json:"recipient"`
-	Payload             string           `json:"payload"`
-	DhPublic            string           `json:"dh_public"`
-	MessageNumber       int32            `json:"message_number"`
-	PreviousChainLength int32            `json:"previous_chain_length"`
-	CreatedAt           pgtype.Timestamp `json:"created_at"`
+	ID              pgtype.UUID      `json:"id"`
+	InboxID         string           `json:"inbox_id"`
+	Kind            string           `json:"kind"`
+	Header          string           `json:"header"`
+	Ciphertext      string           `json:"ciphertext"`
+	UsedPrekeyID    pgtype.UUID      `json:"used_prekey_id"`
+	ClientMessageID string           `json:"client_message_id"`
+	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	ExpiresAt       pgtype.Timestamp `json:"expires_at"`
 }
 
 type OneTimePrekey struct {
 	ID        pgtype.UUID      `json:"id"`
-	Username  string           `json:"username"`
+	UserID    pgtype.UUID      `json:"user_id"`
 	Prekey    string           `json:"prekey"`
 	CreatedAt pgtype.Timestamp `json:"created_at"`
 }
@@ -31,5 +33,6 @@ type User struct {
 	IdentityKey           string           `json:"identity_key"`
 	SignedPrekey          string           `json:"signed_prekey"`
 	SignedPrekeySignature string           `json:"signed_prekey_signature"`
+	InboxID               string           `json:"inbox_id"`
 	CreatedAt             pgtype.Timestamp `json:"created_at"`
 }

@@ -7,7 +7,7 @@ import (
 )
 
 type Hub struct {
-	// username -> list of connections
+	// inbox_id -> list of connections
 	connections map[string][]*websocket.Conn
 	mu          sync.RWMutex
 }
@@ -18,35 +18,37 @@ func NewHub() *Hub {
 	}
 }
 
-func (h *Hub) Subscribe(username string, conn *websocket.Conn) {
+func (h *Hub) Subscribe(inboxID string, conn *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.connections[username] = append(h.connections[username], conn)
+	h.connections[inboxID] = append(h.connections[inboxID], conn)
 }
 
-func (h *Hub) Unsubscribe(username string, conn *websocket.Conn) {
+func (h *Hub) Unsubscribe(inboxID string, conn *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	conns := h.connections[username]
+	conns := h.connections[inboxID]
 	for i, c := range conns {
 		if c == conn {
-			h.connections[username] = append(conns[:i], conns[i+1:]...)
+			h.connections[inboxID] = append(conns[:i], conns[i+1:]...)
 			break
 		}
 	}
+	if len(h.connections[inboxID]) == 0 {
+		delete(h.connections, inboxID)
+	}
 }
 
-func (h *Hub) Notify(username string, messageID string) {
+func (h *Hub) Notify(inboxID string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	notification := map[string]string{
-		"type": "new_message",
-		"id":   messageID,
+		"type": "messages_available",
 	}
 
-	for _, conn := range h.connections[username] {
-		conn.WriteJSON(notification)
+	for _, conn := range h.connections[inboxID] {
+		_ = conn.WriteJSON(notification)
 	}
 }

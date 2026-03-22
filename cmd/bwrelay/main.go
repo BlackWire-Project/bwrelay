@@ -51,13 +51,11 @@ func main() {
 
 	// User routes
 	r.POST("/users", userHandler.Create)
-	r.GET("/users/:username", userHandler.Get)
-	r.GET("/users/:username/prekey", userHandler.GetPrekey)
+	r.GET("/users/:username/bundle", userHandler.GetBundle)
 	r.POST("/users/:username/prekeys", userHandler.AddPrekeys)
 
 	// Message routes
 	r.POST("/messages", messageHandler.Create)
-	r.GET("/messages/:id", messageHandler.GetByID)
 	r.GET("/messages", messageHandler.List)
 
 	// WebSocket
