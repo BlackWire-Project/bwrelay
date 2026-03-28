@@ -40,12 +40,18 @@ func (h *Hub) Unsubscribe(inboxID string, conn *websocket.Conn) {
 	}
 }
 
-func (h *Hub) Notify(inboxID string) {
+type Notification struct {
+	Type      string `json:"type"`
+	MessageID string `json:"message_id,omitempty"`
+}
+
+func (h *Hub) Notify(inboxID string, messageID string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	notification := map[string]string{
-		"type": "messages_available",
+	notification := Notification{
+		Type:      "messages_available",
+		MessageID: messageID,
 	}
 
 	for _, conn := range h.connections[inboxID] {

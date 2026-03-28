@@ -43,3 +43,6 @@ ON messages(inbox_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_messages_pending
 ON messages(inbox_id, expires_at, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_messages_inbox_created_id
+ON messages(inbox_id, created_at, id);
