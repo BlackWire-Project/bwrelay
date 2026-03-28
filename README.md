@@ -266,19 +266,23 @@ Poll an inbox for non-expired envelopes.
 Response:
 
 ```json
-[
-  {
-    "id": "uuid",
-    "inbox_id": "opaque-capability",
-    "kind": "ratchet_message",
-    "header": "opaque-client-header",
-    "ciphertext": "opaque-ciphertext",
-    "used_prekey_id": null,
-    "client_message_id": "client-generated-idempotency-key",
-    "created_at": "2026-03-22T18:00:00Z",
-    "expires_at": "2026-04-21T18:00:00Z"
-  }
-]
+{
+  "items": [
+    {
+      "id": "uuid",
+      "inbox_id": "opaque-capability",
+      "kind": "ratchet_message",
+      "header": "opaque-client-header",
+      "ciphertext": "opaque-ciphertext",
+      "used_prekey_id": null,
+      "client_message_id": "client-generated-idempotency-key",
+      "created_at": "2026-03-22T18:00:00Z",
+      "expires_at": "2026-04-21T18:00:00Z"
+    }
+  ],
+  "next_after_id": "uuid-or-null",
+  "has_more": true
+}
 ```
 
 Notes:
@@ -286,6 +290,14 @@ Notes:
 - only non-expired messages are returned
 - reads are currently non-destructive
 - messages stay visible until expiration
+- ordering is stable by `created_at`, then `id`
+- `limit` defaults to `100` and is capped at `500`
+- `after_id`: continue after a previously seen relay message ID
+- `created_after`: RFC3339 lower bound for `created_at`
+- `created_before`: RFC3339 upper bound for `created_at`
+- `after_id` must belong to the same inbox
+- date filters and cursor pagination apply within the same query window
+- `next_after_id` is the last item returned and can be reused in the next request
 
 ### `GET /ws?inbox_id=...`
 

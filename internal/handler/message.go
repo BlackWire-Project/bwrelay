@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/BlackWire-Project/bwrelay/internal/db"
 	"github.com/BlackWire-Project/bwrelay/internal/ws"
@@ -65,6 +66,12 @@ type GetMessageResponse struct {
 	ClientMessageID string  `json:"client_message_id"`
 	CreatedAt       string  `json:"created_at"`
 	ExpiresAt       string  `json:"expires_at"`
+}
+
+type ListMessagesResponse struct {
+	Items       []GetMessageResponse `json:"items"`
+	NextAfterID *string              `json:"next_after_id"`
+	HasMore     bool                 `json:"has_more"`
 }
 
 // POST /messages
@@ -145,7 +152,7 @@ RETURNING p.id
 		return
 	}
 
-	h.hub.Notify(req.InboxID)
+	h.hub.Notify(req.InboxID, uuidToString(msg.ID.Bytes))
 
 	c.JSON(http.StatusCreated, CreateMessageResponse{
 		ID:        uuidToString(msg.ID.Bytes),
@@ -154,7 +161,7 @@ RETURNING p.id
 	})
 }
 
-// GET /messages?inbox_id=...&limit=...
+// GET /messages?inbox_id=...&limit=...&after_id=...&created_after=...&created_before=...
 func (h *MessageHandler) List(c *gin.Context) {
 	inboxID := c.Query("inbox_id")
 	if inboxID == "" {
@@ -179,13 +186,46 @@ func (h *MessageHandler) List(c *gin.Context) {
 		limit = int32(parsed)
 	}
 
-	messages, err := h.queries.GetMessagesByInboxID(c.Request.Context(), db.GetMessagesByInboxIDParams{
-		InboxID: inboxID,
-		Limit:   limit,
-	})
+	createdAfter, err := parseOptionalRFC3339(c.Query("created_after"))
 	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "created_after must be a valid RFC3339 timestamp"})
+		return
+	}
+
+	createdBefore, err := parseOptionalRFC3339(c.Query("created_before"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "created_before must be a valid RFC3339 timestamp"})
+		return
+	}
+
+	if createdAfter != nil && createdBefore != nil && createdAfter.After(*createdBefore) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "created_after must be before or equal to created_before"})
+		return
+	}
+
+	afterID := c.Query("after_id")
+
+	filter := db.ListMessagesFilter{
+		InboxID:       inboxID,
+		Limit:         int(limit) + 1,
+		AfterID:       afterID,
+		CreatedAfter:  createdAfter,
+		CreatedBefore: createdBefore,
+	}
+
+	messages, err := h.queries.ListMessages(c.Request.Context(), filter)
+	if err != nil {
+		if errors.Is(err, db.ErrInvalidMessageCursor) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "after_id is invalid for inbox"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
 		return
+	}
+
+	hasMore := len(messages) > int(limit)
+	if hasMore {
+		messages = messages[:int(limit)]
 	}
 
 	response := make([]GetMessageResponse, len(messages))
@@ -193,7 +233,52 @@ func (h *MessageHandler) List(c *gin.Context) {
 		response[i] = toMessageResponse(msg)
 	}
 
-	c.JSON(http.StatusOK, response)
+	var nextAfterID *string
+	if hasMore && len(response) > 0 {
+		id := response[len(response)-1].ID
+		nextAfterID = &id
+	}
+
+	c.JSON(http.StatusOK, ListMessagesResponse{
+		Items:       response,
+		NextAfterID: nextAfterID,
+		HasMore:     hasMore,
+	})
+}
+
+// GET /messages/:id?inbox_id=...
+func (h *MessageHandler) GetByID(c *gin.Context) {
+	inboxID := c.Query("inbox_id")
+	if inboxID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "inbox_id query parameter required"})
+		return
+	}
+	if err := validateLength("inbox_id", inboxID, maxInboxIDLength); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	messageID := c.Param("id")
+	if messageID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "message id path parameter required"})
+		return
+	}
+
+	message, err := h.queries.GetMessageByID(c.Request.Context(), inboxID, messageID)
+	if err != nil {
+		if errors.Is(err, db.ErrInvalidMessageCursor) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid message id"})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "message not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, toMessageResponse(message))
 }
 
 func validateCreateMessageRequest(req CreateMessageRequest) error {
@@ -244,4 +329,18 @@ func toMessageResponse(msg db.Message) GetMessageResponse {
 		CreatedAt:       msg.CreatedAt.Time.Format(timeFormat),
 		ExpiresAt:       msg.ExpiresAt.Time.Format(timeFormat),
 	}
+}
+
+func parseOptionalRFC3339(raw string) (*time.Time, error) {
+	if raw == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, err
+	}
+
+	utc := parsed.UTC().Truncate(time.Second)
+	return &utc, nil
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const Version = "0.1.1"
+
 func main() {
 	// Load .env
 	godotenv.Load()
@@ -46,7 +48,10 @@ func main() {
 
 	// Health check
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"version": Version,
+		})
 	})
 
 	// User routes
@@ -57,6 +62,7 @@ func main() {
 	// Message routes
 	r.POST("/messages", messageHandler.Create)
 	r.GET("/messages", messageHandler.List)
+	r.GET("/messages/:id", messageHandler.GetByID)
 
 	// WebSocket
 	r.GET("/ws", wsHandler.Handle)
