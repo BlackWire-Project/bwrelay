@@ -357,7 +357,7 @@ erDiagram
 ## Current Limits
 
 - `username`: max 255 bytes
-- `inbox_id`: max 255 bytes
+- `inbox_id`: max 512 bytes
 - key and prekey fields: max 16384 bytes
 - `header`: max 65536 bytes
 - `ciphertext`: max 262144 bytes
