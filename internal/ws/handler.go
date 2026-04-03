@@ -7,7 +7,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const maxInboxIDLength = 255
+const maxInboxIDLength = 512
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {

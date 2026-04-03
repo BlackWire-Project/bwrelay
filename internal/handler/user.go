@@ -14,7 +14,7 @@ import (
 
 const (
 	maxUsernameLength = 255
-	maxInboxIDLength  = 255
+	maxInboxIDLength  = 512
 	maxKeyLength      = 16384
 	maxPrekeysPerUser = 1000
 )

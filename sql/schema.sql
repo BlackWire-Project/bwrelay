@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users(
     identity_key TEXT UNIQUE NOT NULL,
     signed_prekey TEXT UNIQUE NOT NULL,
     signed_prekey_signature TEXT NOT NULL,
-    inbox_id VARCHAR(255) UNIQUE NOT NULL,
+    inbox_id VARCHAR(512) UNIQUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS one_time_prekeys(
 -- Messages table
 CREATE TABLE IF NOT EXISTS messages(
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    inbox_id VARCHAR(255) NOT NULL REFERENCES users(inbox_id) ON DELETE CASCADE,
+    inbox_id VARCHAR(512) NOT NULL REFERENCES users(inbox_id) ON DELETE CASCADE,
     kind VARCHAR(32) NOT NULL,
     header TEXT NOT NULL,
     ciphertext TEXT NOT NULL,
